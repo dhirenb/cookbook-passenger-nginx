@@ -52,6 +52,6 @@ gem_package "passenger" do
 end
 
 execute "passenger_module" do
-  command 'passenger-install-nginx-module --auto --auto-download --prefix=#{nginx_prefix}'
+  command "passenger-install-nginx-module --auto --auto-download --prefix=#{nginx_prefix}"
   creates node[:passenger][:module_path]
 end
