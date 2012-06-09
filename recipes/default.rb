@@ -1,57 +1,98 @@
 #
-# Cookbook Name:: passenger_apache2
-# Recipe:: default
-#
-# Author:: Joshua Timberman (<joshua@opscode.com>)
-# Author:: Joshua Sierles (<joshua@37signals.com>)
-# Author:: Michael Hale (<mikehale@gmail.com>)
-#
-# Copyright:: 2009, Opscode, Inc
-# Copyright:: 2009, 37signals
-# Coprighty:: 2009, Michael Hale
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Cookbook Name:: passenger
+# Recipe:: production
 
-include_recipe "apache2"
-include_recipe "build-essential"
+include_recipe "rbenv"
 
-nginx_prefix = node[:passenger][:nginx_prefix]
-
-case node[:platform]
-when "arch"
-  package "apache"
-when "centos","redhat"
-  package "httpd-devel"
-  if node['platform_version'].to_f < 6.0
-    package 'curl-devel'
-  else
-    package 'libcurl-devel'
-    package 'openssl-devel'
-    package 'zlib-devel'
-  end
-else
-  %w{ apache2-prefork-dev libapr1-dev libcurl4-gnutls-dev }.each do |pkg|
-    package pkg do
-      action :upgrade
-    end
+package "curl"
+if ['ubuntu', 'debian'].member? node[:platform]
+  ['libcurl4-openssl-dev','libpcre3-dev'].each do |pkg|
+    package pkg
   end
 end
 
-gem_package "passenger" do
-  version node[:passenger][:version]
+rbenv_gem "passenger" do
+  action :install
 end
 
-execute "passenger_module" do
-  command "passenger-install-nginx-module --auto --auto-download --prefix=#{nginx_prefix}"
-  creates node[:passenger][:module_path]
+nginx_path = node[:passenger][:production][:path]
+
+rbenv_script "Install passenger Nginx" do
+  code   %{passenger-install-nginx-module --auto --auto-download --prefix="#{nginx_path}" --extra-configure-flags="#{node[:passenger][:production][:configure_flags]}"}
+  not_if "test -e #{nginx_path}"
 end
+
+log_path = node[:passenger][:production][:log_path]
+
+directory log_path do
+  mode 0755
+  action :create
+end
+
+directory "#{nginx_path}/conf/conf.d" do
+  mode 0755
+  action :create
+  recursive true
+  notifies :reload, 'service[nginx]'
+end
+
+directory "#{nginx_path}/conf/sites.d" do
+  mode 0755
+  action :create
+  recursive true
+  notifies :reload, 'service[nginx]'
+end
+
+rbenv_script "Set passenger root" do
+  code "passenger-config --root > /tmp/passenger_root"
+  not_if "test -f /tmp/passenger_root"
+end
+
+rbenv_script "Set Ruby path" do
+  code "rbenv which ruby > /tmp/ruby_path"
+  not_if "test -f /tmp/ruby_path"
+end
+
+template "#{nginx_path}/conf/nginx.conf" do
+  source "nginx.conf.erb"
+  owner "root"
+  group "root"
+  mode 0644
+  variables(
+    :log_path => log_path,
+    :ruby_path => %x(cat /tmp/ruby_path).sub("\n",""),
+    :passenger_root => %x(cat /tmp/passenger_root).sub("\n",""),
+    :passenger => node[:passenger][:production],
+    :pidfile => "#{nginx_path}/nginx.pid"
+  )
+  notifies :reload, 'service[nginx]'
+end
+
+template "/etc/init.d/nginx" do
+  source "nginx.init.erb"
+  owner "root"
+  group "root"
+  mode 0755
+  variables(
+    :pidfile => "#{nginx_path}/nginx.pid",
+    :nginx_path => nginx_path
+  )
+end
+
+if node[:passenger][:production][:status_server]
+  cookbook_file "#{nginx_path}/conf/sites.d/status.conf" do
+    source "status.conf"
+    mode "0644"
+  end
+end
+
+#service "nginx" do
+#  service_name "nginx"
+#  reload_command "#{nginx_path}/sbin/nginx -s reload"
+#  start_command "#{nginx_path}/sbin/nginx"
+#  stop_command "#{nginx_path}/sbin/nginx -s stop"
+#  supports [ :start, :stop, :reload, :status, :enable ]
+#  action [ :enable, :start ]
+#  pattern "nginx: master"
+#end
+
