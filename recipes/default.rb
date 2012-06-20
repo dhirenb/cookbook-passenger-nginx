@@ -33,7 +33,7 @@ directory "#{nginx_path}/conf/conf.d" do
   mode 0755
   action :create
   recursive true
-  notifies :reload, 'service[nginx]'
+  notifies :reload, 'service[nginx]', :delayed
 end
 
 directory "#{nginx_path}/conf/sites.d" do
@@ -86,13 +86,13 @@ if node[:passenger][:production][:status_server]
   end
 end
 
-#service "nginx" do
-#  service_name "nginx"
-#  reload_command "#{nginx_path}/sbin/nginx -s reload"
-#  start_command "#{nginx_path}/sbin/nginx"
-#  stop_command "#{nginx_path}/sbin/nginx -s stop"
-#  supports [ :start, :stop, :reload, :status, :enable ]
-#  action [ :enable, :start ]
-#  pattern "nginx: master"
-#end
+service "nginx" do
+  service_name "nginx"
+  reload_command "#{nginx_path}/sbin/nginx -s reload"
+  start_command "#{nginx_path}/sbin/nginx"
+  stop_command "#{nginx_path}/sbin/nginx -s stop"
+  supports [ :start, :stop, :reload, :status, :enable ]
+  action [ :enable, :start ]
+  pattern "nginx: master"
+end
 
