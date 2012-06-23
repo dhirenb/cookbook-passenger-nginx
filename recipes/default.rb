@@ -15,14 +15,13 @@ rbenv_gem "passenger" do
   action :install
 end
 
+log_path = node[:passenger][:production][:log_path]
 nginx_path = node[:passenger][:production][:path]
 
 rbenv_script "Install passenger Nginx" do
   code   %{passenger-install-nginx-module --auto --auto-download --prefix="#{nginx_path}" --extra-configure-flags="#{node[:passenger][:production][:configure_flags]}"}
   not_if "test -e #{nginx_path}"
 end
-
-log_path = node[:passenger][:production][:log_path]
 
 directory log_path do
   mode 0755
@@ -33,40 +32,35 @@ directory "#{nginx_path}/conf/conf.d" do
   mode 0755
   action :create
   recursive true
-  notifies :reload, 'service[nginx]', :delayed
 end
 
 directory "#{nginx_path}/conf/sites.d" do
   mode 0755
   action :create
   recursive true
-  notifies :reload, 'service[nginx]'
 end
 
 rbenv_script "Set passenger root" do
   code "passenger-config --root > /tmp/passenger_root"
-  not_if "test -f /tmp/passenger_root"
 end
 
 rbenv_script "Set Ruby path" do
   code "rbenv which ruby > /tmp/ruby_path"
-  not_if "test -f /tmp/ruby_path"
 end
 
-template "#{nginx_path}/conf/nginx.conf" do
-  source "nginx.conf.erb"
-  owner "root"
-  group "root"
-  mode 0644
-  variables(
-    :log_path => log_path,
-    :ruby_path => %x(cat /tmp/ruby_path).sub("\n",""),
-    :passenger_root => %x(cat /tmp/passenger_root).sub("\n",""),
-    :passenger => node[:passenger][:production],
-    :pidfile => "#{nginx_path}/nginx.pid"
-  )
-  notifies :reload, 'service[nginx]'
-end
+#template "#{nginx_path}/conf/nginx.conf" do
+#  source "nginx.conf.erb"
+#  owner "root"
+#  group "root"
+#  mode 0644
+#  variables(
+#    :log_path => log_path,
+#    #:ruby_path => ruby_path.sub("\n",""),
+#    #:passenger_root => passenger_root.sub("\n",""),
+#    :passenger => node[:passenger][:production],
+#    :pidfile => "#{nginx_path}/nginx.pid"
+#  )
+#end
 
 template "/etc/init.d/nginx" do
   source "nginx.init.erb"
